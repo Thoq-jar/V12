@@ -28,6 +28,11 @@ pub fn main() !void {
         if (std.mem.eql(u8, arg, "--verbose")) {
             verbose = true;
         } else {
+            if (!std.mem.endsWith(u8, arg, ".js")) {
+                try stdout.print("Error: File must have a .js extension!\n", .{});
+                try stdout.print("Typescript support is comming at a later time!\n", .{});
+                return error.InvalidFileExtension;
+            }
             filepath = try allocator.dupe(u8, arg);
         }
     }
