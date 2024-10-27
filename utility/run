@@ -1,0 +1,36 @@
+#!/bin/bash
+
+BUILD_MODE=""
+VERBOSE=""
+FILE=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --dev|--release|--fast)
+            BUILD_MODE="$1"
+            shift
+            ;;
+        --verbose)
+            VERBOSE="--verbose"
+            shift
+            ;;
+        *)
+            FILE="$1"
+            shift
+            ;;
+    esac
+done
+
+if [ -z "$BUILD_MODE" ] || [ -z "$FILE" ]; then
+    echo "Usage: ./run [--dev|--release|--fast] [--verbose] <file.js>"
+    echo ""
+    echo "Options:"
+    echo "  --dev      Run development build"
+    echo "  --release  Run release build with safety checks"
+    echo "  --fast     Run release build optimized for speed"
+    echo "  --verbose  Enable verbose output"
+    exit 1
+fi
+
+./utility/build "$BUILD_MODE"
+./zig-out/bin/v12 $VERBOSE "$FILE"

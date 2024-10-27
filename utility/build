@@ -1,0 +1,22 @@
+#!/bin/bash
+
+case "$1" in
+    --dev)
+        zig build
+        ;;
+    --release)
+        zig build --release=safe
+        ;;
+    --fast)
+        zig build --release=fast
+        ;;
+    *)
+        echo "Usage: ./build [--dev|--release|--fast]"
+        echo ""
+        echo "Options:"
+        echo "  --dev      Development build"
+        echo "  --release  Release build with safety checks"
+        echo "  --fast     Release build optimized for speed"
+        exit 1
+        ;;
+esac
