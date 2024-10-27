@@ -8,17 +8,19 @@ pub const ParseError = error{
 } || std.fs.File.WriteError;
 
 pub const Parser = struct {
+    allocator: std.mem.Allocator,
     tokens: []const token.Token,
     current: usize,
-    allocator: std.mem.Allocator,
     stdout: std.fs.File.Writer,
+    verbose: bool,
 
-    pub fn init(allocator: std.mem.Allocator, tokens: []const token.Token) !Parser {
-        return .{
+    pub fn init(allocator: std.mem.Allocator, tokens: []const token.Token, verbose: bool) !Parser {
+        return Parser{
+            .allocator = allocator,
             .tokens = tokens,
             .current = 0,
-            .allocator = allocator,
             .stdout = std.io.getStdOut().writer(),
+            .verbose = verbose,
         };
     }
 
@@ -27,12 +29,12 @@ pub const Parser = struct {
     }
 
     pub fn parse(self: *Parser) !*ast.Node {
-        try self.stdout.print("Starting parse\n", .{});
+        try self.log("Starting parse\n", .{});
         const program = try ast.Node.init(self.allocator, .Program, self.peek());
         errdefer program.deinit();
 
         while (!self.isAtEnd()) {
-            try self.stdout.print("Parsing statement at token: {any}\n", .{self.peek()});
+            try self.log("Parsing statement at token: {any}\n", .{self.peek()});
             const stmt = try self.statement() orelse break;
             errdefer stmt.deinit();
             try program.addChild(stmt);
@@ -42,8 +44,7 @@ pub const Parser = struct {
     }
 
     fn statement(self: *Parser) ParseError!?*ast.Node {
-        try self.stdout.print("Current token type: {any}\n", .{self.peek().type});
-
+        try self.log("Current token type: {any}\n", .{self.peek().type});
         if (self.isAtEnd()) return null;
 
         if (self.match(.For)) {
@@ -59,28 +60,24 @@ pub const Parser = struct {
     }
 
     fn forStatement(self: *Parser) ParseError!*ast.Node {
-        std.debug.print("Parsing for statement\n", .{});
+        try self.log("Parsing for statement\n", .{});
         const for_token = self.previous();
         const node = try ast.Node.init(self.allocator, .ForStatement, for_token);
         errdefer node.deinit();
 
         _ = try self.consume(.LeftParen, "Expected '(' after 'for'.");
 
-        // Parse initialization: let i = 0
         const initialization = try self.varDeclaration();
         try node.addChild(initialization);
 
-        // Parse condition: i < 1000000
         const condition = try self.expression();
         try node.addChild(condition);
         _ = try self.consume(.Semicolon, "Expected ';' after loop condition.");
 
-        // Parse increment: i++
         const increment = try self.expression();
         try node.addChild(increment);
         _ = try self.consume(.RightParen, "Expected ')' after for clauses.");
 
-        // Parse body: { console.log(i) }
         const body = (try self.statement()) orelse return error.ParseError;
         try node.addChild(body);
 
@@ -88,8 +85,11 @@ pub const Parser = struct {
     }
 
     fn varDeclaration(self: *Parser) ParseError!*ast.Node {
-        try self.stdout.print("Parsing var declaration\n", .{});
-        _ = try self.consume(.Let, "Expected 'let' keyword.");
+        try self.log("Parsing var declaration\n", .{});
+        const is_const = self.match(.Const);
+        if (!is_const) {
+            _ = try self.consume(.Let, "Expected 'let' or 'const' keyword.");
+        }
         const name = try self.consume(.Identifier, "Expected variable name.");
         _ = try self.consume(.Equal, "Expected '=' after variable name.");
         const initializer = try self.expression();
@@ -103,9 +103,42 @@ pub const Parser = struct {
     }
 
     fn expression(self: *Parser) ParseError!*ast.Node {
-        const stdout = std.io.getStdOut().writer();
-        try stdout.print("Parsing expression\n", .{});
-        return self.comparison();
+        try self.log("Parsing expression\n", .{});
+        return self.addition();
+    }
+
+    fn addition(self: *Parser) ParseError!*ast.Node {
+        var expr = try self.multiplication();
+        errdefer expr.deinit();
+
+        while (self.match(.Plus) or self.match(.Minus)) {
+            const operator = self.previous();
+            const right = try self.multiplication();
+            errdefer right.deinit();
+
+            var new_expr = try ast.Node.init(self.allocator, .BinaryExpression, operator);
+            try new_expr.addChild(expr);
+            try new_expr.addChild(right);
+            expr = new_expr;
+        }
+        return expr;
+    }
+
+    fn multiplication(self: *Parser) ParseError!*ast.Node {
+        var expr = try self.comparison();
+        errdefer expr.deinit();
+
+        while (self.match(.Star) or self.match(.Slash)) {
+            const operator = self.previous();
+            const right = try self.comparison();
+            errdefer right.deinit();
+
+            var new_expr = try ast.Node.init(self.allocator, .BinaryExpression, operator);
+            try new_expr.addChild(expr);
+            try new_expr.addChild(right);
+            expr = new_expr;
+        }
+        return expr;
     }
 
     fn comparison(self: *Parser) ParseError!*ast.Node {
@@ -128,7 +161,7 @@ pub const Parser = struct {
     }
 
     fn primary(self: *Parser) ParseError!*ast.Node {
-        try self.stdout.print("Parsing primary. Current token: {any}\n", .{self.peek()});
+        try self.log("Parsing primary. Current token: {any}\n", .{self.peek()});
 
         if (self.match(.String)) {
             return ast.Node.init(self.allocator, .StringLiteral, self.previous());
@@ -141,21 +174,34 @@ pub const Parser = struct {
             errdefer console.deinit();
 
             _ = try self.consume(.Dot, "Expected '.' after 'console'");
-            _ = try self.consume(.Log, "Expected 'log' after 'console.'");
-            _ = try self.consume(.LeftParen, "Expected '(' after 'log'");
+            const method = if (self.match(.Log))
+                self.previous()
+            else if (self.match(.Warn))
+                self.previous()
+            else if (self.match(.Error))
+                self.previous()
+            else
+                return error.ParseError;
 
-            var node = try ast.Node.init(self.allocator, .CallExpression, self.previous());
+            _ = try self.consume(.LeftParen, "Expected '(' after method name");
+
+            var node = try ast.Node.init(self.allocator, .CallExpression, method);
             errdefer node.deinit();
 
             try node.addChild(console);
+            try node.addChild(try ast.Node.init(self.allocator, .Identifier, method));
 
-            if (!self.check(.RightParen)) {
+            while (!self.check(.RightParen)) {
                 const arg = try self.expression();
                 errdefer arg.deinit();
                 try node.addChild(arg);
+
+                if (!self.check(.RightParen)) {
+                    _ = try self.consume(.Comma, "Expected ',' between arguments");
+                }
             }
 
-            _ = try self.consume(.RightParen, "Expected ')' after argument");
+            _ = try self.consume(.RightParen, "Expected ')' after arguments");
             return node;
         }
         if (self.match(.Identifier)) {
@@ -174,7 +220,6 @@ pub const Parser = struct {
         return error.ParseError;
     }
 
-    // Helper methods
     fn peek(self: Parser) token.Token {
         return self.tokens[self.current];
     }
@@ -213,7 +258,7 @@ pub const Parser = struct {
         const expr = try self.expression();
         errdefer expr.deinit();
 
-        if (!self.check(.RightBrace)) { // Don't require semicolon before closing brace
+        if (!self.check(.RightBrace)) {
             _ = try self.consume(.Semicolon, "Expected ';' after expression.");
         }
 
@@ -239,5 +284,11 @@ pub const Parser = struct {
 
         _ = try self.consume(.RightBrace, "Expected '}' after block.");
         return node;
+    }
+
+    fn log(self: *Parser, comptime fmt: []const u8, args: anytype) !void {
+        if (self.verbose) {
+            try self.stdout.print(fmt, args);
+        }
     }
 };

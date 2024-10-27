@@ -13,6 +13,7 @@ pub const NodeType = enum {
     Identifier,
     NumberLiteral,
     StringLiteral,
+    EvalExpression,
 };
 
 pub const Node = struct {

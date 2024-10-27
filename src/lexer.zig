@@ -39,6 +39,15 @@ pub const Lexer = struct {
     fn scanToken(self: *Lexer) !void {
         const c = self.advance();
         switch (c) {
+            '/' => {
+                if (self.peek() == '/') {
+                    while (self.peek() != '\n' and !self.isAtEnd()) {
+                        _ = self.advance();
+                    }
+                } else {
+                    try self.addToken(.Slash);
+                }
+            },
             '"' => try self.string(),
             '(' => try self.addToken(.LeftParen),
             ')' => try self.addToken(.RightParen),
@@ -58,6 +67,7 @@ pub const Lexer = struct {
             '=' => try self.addToken(.Equal),
             ' ', '\r', '\t' => {}, // Ignore whitespace
             '\n' => self.line += 1,
+            ',' => try self.addToken(.Comma),
             else => {
                 if (isDigit(c)) {
                     try self.number();
@@ -71,6 +81,9 @@ pub const Lexer = struct {
     }
 
     fn string(self: *Lexer) !void {
+        // Skip the opening quote
+        self.start += 1;
+
         while (self.peek() != '"' and !self.isAtEnd()) {
             if (self.peek() == '\n') self.line += 1;
             _ = self.advance();
@@ -81,8 +94,11 @@ pub const Lexer = struct {
             return;
         }
 
+        const str_end = self.current;
         _ = self.advance(); // Consume closing "
+        self.current = str_end;
         try self.addToken(.String);
+        self.current += 1;
     }
 
     fn isAtEnd(self: Lexer) bool {

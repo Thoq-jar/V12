@@ -4,8 +4,12 @@ pub const TokenType = enum {
     // Keywords
     For,
     Let,
+    Const,
     Console,
     Log,
+    Warn,
+    Error,
+    Eval,
 
     // Symbols
     LeftParen,
@@ -16,6 +20,9 @@ pub const TokenType = enum {
     Equal,
     Less,
     Plus,
+    Minus,
+    Star,
+    Slash,
     Plus2, // ++
     Dot, // .
 
@@ -25,6 +32,7 @@ pub const TokenType = enum {
     Identifier,
 
     Eof,
+    Comma,
 };
 
 pub const Token = struct {
@@ -39,8 +47,12 @@ pub fn initKeywords(allocator: std.mem.Allocator) !void {
     keywords = std.StringHashMap(TokenType).init(allocator);
     try keywords.put("for", .For);
     try keywords.put("let", .Let);
+    try keywords.put("const", .Const);
     try keywords.put("console", .Console);
     try keywords.put("log", .Log);
+    try keywords.put("warn", .Warn);
+    try keywords.put("error", .Error);
+    try keywords.put("eval", .Eval);
 }
 
 pub fn deinitKeywords() void {

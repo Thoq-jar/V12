@@ -1,6 +1,10 @@
 const std = @import("std");
 const parser = @import("parser.zig");
 const ast = @import("ast.zig");
+const lexer = @import("lexer.zig");
+const io = @import("io.zig");
+
+const Color = io.Color;
 
 pub const Value = union(enum) {
     number: i64,
@@ -62,6 +66,7 @@ pub const InterpreterError = error{
     UndefinedVariable,
     Overflow,
     InvalidCharacter,
+    ParseError,
 } || std.fs.File.WriteError;
 
 pub const Interpreter = struct {
@@ -69,14 +74,16 @@ pub const Interpreter = struct {
     environment: *Environment,
 
     pub fn init(allocator: std.mem.Allocator) !Interpreter {
+        io.init();
         const env = try Environment.init(allocator, null);
-        return .{
+        return Interpreter{
             .allocator = allocator,
             .environment = env,
         };
     }
 
     pub fn deinit(self: *Interpreter) void {
+        io.deinit();
         self.environment.deinit();
     }
 
@@ -108,12 +115,12 @@ pub const Interpreter = struct {
     }
 
     fn visitForStatement(self: *Interpreter, node: *ast.Node) InterpreterError!void {
-        const initialization = node.children.items[0];
+        const init_node = node.children.items[0];
+        try self.visitNode(init_node);
+
         const condition = node.children.items[1];
         const update = node.children.items[2];
         const body = node.children.items[3];
-
-        try self.visitNode(initialization);
 
         while (try self.evaluateCondition(condition)) {
             try self.visitNode(body);
@@ -144,18 +151,61 @@ pub const Interpreter = struct {
 
     fn visitCallExpression(self: *Interpreter, node: *ast.Node) InterpreterError!void {
         const callee = node.children.items[0];
+
         if (callee.token.type == .Console) {
-            const args = node.children.items[1..];
+            const method = node.children.items[1].token.type;
+            const args = node.children.items[2..];
+
+            const color = switch (method) {
+                .Log => Color.Reset,
+                .Warn => Color.Yellow,
+                .Error => Color.Red,
+                else => Color.Reset,
+            };
+
             for (args) |arg| {
                 const value = try self.evaluateExpression(arg);
-                try self.printValue(value);
+                if (value == .number) {
+                    try self.printValue(value);
+                } else {
+                    io.writeText(switch (value) {
+                        .string => |s| s,
+                        .undefined => "undefined",
+                        else => unreachable,
+                    }, color);
+                    io.writeText(" ", color);
+                }
             }
-            try std.io.getStdOut().writer().writeByte('\n');
+            io.writeText("", .Reset);
+            io.writeNewline();
         }
     }
 
     fn evaluateExpression(self: *Interpreter, node: *ast.Node) InterpreterError!Value {
         switch (node.type) {
+            .UpdateExpression => {
+                const identifier = node.children.items[0];
+                const name = identifier.token.lexeme;
+                if (self.environment.get(name)) |value| {
+                    const new_value = Value{ .number = value.number + 1 };
+                    try self.environment.assign(name, new_value);
+                    return new_value;
+                }
+                return error.UndefinedVariable;
+            },
+            .BinaryExpression => {
+                const left = try self.evaluateExpression(node.children.items[0]);
+                const right = try self.evaluateExpression(node.children.items[1]);
+
+                switch (node.token.type) {
+                    .Plus => return Value{ .number = left.number + right.number },
+                    .Minus => return Value{ .number = left.number - right.number },
+                    .Star => return Value{ .number = left.number * right.number },
+                    .Slash => return Value{ .number = @divTrunc(left.number, right.number) },
+                    .Less => return Value{ .number = if (left.number < right.number) 1 else 0 },
+                    else => return Value{ .undefined = {} },
+                }
+            },
             .NumberLiteral => {
                 const num = try std.fmt.parseInt(i64, node.token.lexeme, 10);
                 return Value{ .number = num };
@@ -169,24 +219,6 @@ pub const Interpreter = struct {
                 }
                 return error.UndefinedVariable;
             },
-            .BinaryExpression => {
-                const left = try self.evaluateExpression(node.children.items[0]);
-                const right = try self.evaluateExpression(node.children.items[1]);
-                if (node.token.type == .Less) {
-                    return Value{ .number = if (left.number < right.number) 1 else 0 };
-                }
-                return Value{ .number = left.number };
-            },
-            .UpdateExpression => {
-                const id = node.children.items[0];
-                if (self.environment.get(id.token.lexeme)) |value| {
-                    var new_value = value;
-                    new_value.number += 1;
-                    try self.environment.define(id.token.lexeme, new_value);
-                    return new_value;
-                }
-                return error.UndefinedVariable;
-            },
             else => return Value{ .undefined = {} },
         }
     }
@@ -194,9 +226,10 @@ pub const Interpreter = struct {
     fn printValue(self: *Interpreter, value: Value) InterpreterError!void {
         _ = self;
         switch (value) {
-            .number => |n| try std.io.getStdOut().writer().print("{d}", .{n}),
-            .string => |s| try std.io.getStdOut().writer().writeAll(s),
-            .undefined => try std.io.getStdOut().writer().writeAll("undefined"),
+            .number => |n| io.writeNumber(n),
+            .string => |s| io.writeText(s, .Reset),
+            .undefined => io.writeText("undefined", .Reset),
         }
+        io.writeText(" ", .Reset);
     }
 };

@@ -19,9 +19,22 @@ pub fn main() !void {
     _ = args.next();
 
     var is_file_source = false;
-    const source = if (args.next()) |filepath| blk: {
+    var filepath: ?[]u8 = null;
+    var verbose = false;
+
+    defer if (filepath) |path| allocator.free(path);
+
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--verbose")) {
+            verbose = true;
+        } else {
+            filepath = try allocator.dupe(u8, arg);
+        }
+    }
+
+    const source = if (filepath) |path| blk: {
         is_file_source = true;
-        const file = try std.fs.cwd().openFile(filepath, .{});
+        const file = try std.fs.cwd().openFile(path, .{});
         defer file.close();
 
         const file_size = try file.getEndPos();
@@ -40,7 +53,7 @@ pub fn main() !void {
     defer lex.deinit();
 
     const tokens = try lex.scanTokens();
-    var parse = try parser.Parser.init(allocator, tokens);
+    var parse = try parser.Parser.init(allocator, tokens, verbose);
     defer parse.deinit();
 
     const ast = try parse.parse();
