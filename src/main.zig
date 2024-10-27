@@ -3,6 +3,7 @@ const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
 const interpreter = @import("interpreter.zig");
 const token = @import("token.zig");
+const info = @import("info.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -25,12 +26,20 @@ pub fn main() !void {
     defer if (filepath) |path| allocator.free(path);
 
     while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--verbose")) {
+        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+            try info.printHelp();
+            return;
+        } else if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-v")) {
+            try info.printVersion();
+            return;
+        } else if (std.mem.eql(u8, arg, "--verbose")) {
             verbose = true;
         } else {
             if (!std.mem.endsWith(u8, arg, ".js")) {
                 try stdout.print("Error: File must have a .js extension!\n", .{});
-                try stdout.print("Typescript support is comming at a later time!\n", .{});
+                if (std.mem.endsWith(u8, arg, ".ts")) {
+                    try stdout.print("Typescript support is coming at a later time!\n", .{});
+                }
                 return error.InvalidFileExtension;
             }
             filepath = try allocator.dupe(u8, arg);
