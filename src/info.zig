@@ -1,6 +1,6 @@
 const std = @import("std");
 
-pub const VERSION = "0.3.0";
+pub const VERSION = "0.4.0";
 
 const banner =
     \\██╗   ██╗ ██╗██████╗     ███████╗███╗   ██╗ ██████╗ ██╗███╗   ██╗███████╗
