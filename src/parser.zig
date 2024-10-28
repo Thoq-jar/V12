@@ -47,11 +47,17 @@ pub const Parser = struct {
         try self.log("Current token type: {any}\n", .{self.peek().type});
         if (self.isAtEnd()) return null;
 
+        if (self.match(.Let) or self.match(.Const)) {
+            return self.varDeclaration();
+        }
         if (self.match(.For)) {
             return self.forStatement();
         }
         if (self.match(.LeftBrace)) {
             return self.blockStatement();
+        }
+        if (self.match(.While)) {
+            return self.whileStatement();
         }
 
         const stmt = try self.expressionStatement();
@@ -67,6 +73,7 @@ pub const Parser = struct {
 
         _ = try self.consume(.LeftParen, "Expected '(' after 'for'.");
 
+        _ = try self.consume(.Let, "Expected 'let' in for loop initialization");
         const initialization = try self.varDeclaration();
         try node.addChild(initialization);
 
@@ -86,10 +93,10 @@ pub const Parser = struct {
 
     fn varDeclaration(self: *Parser) ParseError!*ast.Node {
         try self.log("Parsing var declaration\n", .{});
-        const is_const = self.match(.Const);
-        if (!is_const) {
-            _ = try self.consume(.Let, "Expected 'let' or 'const' keyword.");
+        if (self.verbose) {
+            std.debug.print("Current token: {any}\n", .{self.peek()});
         }
+
         const name = try self.consume(.Identifier, "Expected variable name.");
         _ = try self.consume(.Equal, "Expected '=' after variable name.");
         const initializer = try self.expression();
@@ -142,7 +149,7 @@ pub const Parser = struct {
     }
 
     fn comparison(self: *Parser) ParseError!*ast.Node {
-        std.debug.print("Parsing comparison\n", .{});
+        try self.log("Parsing comparison\n", .{});
         var expr = try self.primary();
         errdefer expr.deinit();
 
@@ -208,9 +215,19 @@ pub const Parser = struct {
             const id = try ast.Node.init(self.allocator, .Identifier, self.previous());
             errdefer id.deinit();
 
+            if (self.match(.Equal)) {
+                const operator = self.previous();
+                const value = try self.expression();
+                errdefer value.deinit();
+
+                const node = try ast.Node.init(self.allocator, .AssignmentExpression, operator);
+                try node.addChild(id);
+                try node.addChild(value);
+                return node;
+            }
+
             if (self.match(.Plus2)) {
                 const node = try ast.Node.init(self.allocator, .UpdateExpression, self.previous());
-                errdefer node.deinit();
                 try node.addChild(id);
                 return node;
             }
@@ -258,10 +275,10 @@ pub const Parser = struct {
         const expr = try self.expression();
         errdefer expr.deinit();
 
-        if (!self.check(.RightBrace)) {
+        try self.log("Current token: {any}\n", .{self.peek()});
+        if (self.peek().type != .RightBrace) {
             _ = try self.consume(.Semicolon, "Expected ';' after expression.");
         }
-
         return expr;
     }
 
@@ -273,11 +290,12 @@ pub const Parser = struct {
     }
 
     fn blockStatement(self: *Parser) ParseError!*ast.Node {
-        const node = try ast.Node.init(self.allocator, .BlockStatement, self.previous());
+        const brace_token = self.previous();
+        const node = try ast.Node.init(self.allocator, .BlockStatement, brace_token);
         errdefer node.deinit();
 
         while (!self.check(.RightBrace) and !self.isAtEnd()) {
-            const stmt = (try self.statement()) orelse return error.ParseError;
+            const stmt = (try self.statement()) orelse break;
             errdefer stmt.deinit();
             try node.addChild(stmt);
         }
@@ -290,5 +308,24 @@ pub const Parser = struct {
         if (self.verbose) {
             try self.stdout.print(fmt, args);
         }
+    }
+
+    fn whileStatement(self: *Parser) ParseError!*ast.Node {
+        const while_token = self.previous();
+        const node = try ast.Node.init(self.allocator, .WhileStatement, while_token);
+        errdefer node.deinit();
+
+        _ = try self.consume(.LeftParen, "Expected '(' after 'while'.");
+        const condition = try self.expression();
+        errdefer condition.deinit();
+        _ = try self.consume(.RightParen, "Expected ')' after condition.");
+
+        const body = try self.blockStatement();
+        errdefer body.deinit();
+
+        try node.addChild(condition);
+        try node.addChild(body);
+
+        return node;
     }
 };

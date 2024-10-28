@@ -32,5 +32,4 @@ if [ -z "$BUILD_MODE" ] || [ -z "$FILE" ]; then
     exit 1
 fi
 
-./utility/build "$BUILD_MODE"
-./zig-out/bin/v12 $VERBOSE "$FILE"
+./utility/build "$BUILD_MODE" && ./zig-out/bin/v12 $VERBOSE "$FILE"

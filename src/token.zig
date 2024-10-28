@@ -3,6 +3,7 @@ const std = @import("std");
 pub const TokenType = enum {
     // Keywords
     For,
+    While,
     Let,
     Const,
     Console,
@@ -23,8 +24,8 @@ pub const TokenType = enum {
     Minus,
     Star,
     Slash,
-    Plus2, // ++
-    Dot, // .
+    Plus2,
+    Dot,
 
     // Literals
     Number,
@@ -33,6 +34,14 @@ pub const TokenType = enum {
 
     Eof,
     Comma,
+
+    pub fn isLet(self: TokenType) bool {
+        return self == .Let;
+    }
+
+    pub fn isConst(self: TokenType) bool {
+        return self == .Const;
+    }
 };
 
 pub const Token = struct {
@@ -53,6 +62,7 @@ pub fn initKeywords(allocator: std.mem.Allocator) !void {
     try keywords.put("warn", .Warn);
     try keywords.put("error", .Error);
     try keywords.put("eval", .Eval);
+    try keywords.put("while", .While);
 }
 
 pub fn deinitKeywords() void {

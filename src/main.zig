@@ -1,7 +1,7 @@
 const std = @import("std");
 const lexer = @import("lexer.zig");
 const parser = @import("parser.zig");
-const interpreter = @import("interpreter.zig");
+const runtime = @import("runtime.zig");
 const token = @import("token.zig");
 const info = @import("info.zig");
 
@@ -56,14 +56,14 @@ pub fn main() !void {
         defer allocator.free(buffer);
 
         const bytes_read = try file.readAll(buffer);
-        break :blk try allocator.dupe(u8, buffer[0..bytes_read]);
-    } else blk: {
-        try stdout.print("No file provided, using default source\n", .{});
-        break :blk "";
+        const source = try allocator.dupe(u8, buffer[0..bytes_read]);
+        break :blk source;
+    } else {
+        return error.NoInputFile;
     };
-    defer if (is_file_source) allocator.free(source);
+    defer allocator.free(source);
 
-    var lex = lexer.Lexer.init(allocator, source);
+    var lex = lexer.Lexer.init(allocator, source, verbose);
     defer lex.deinit();
 
     const tokens = try lex.scanTokens();
@@ -73,7 +73,7 @@ pub fn main() !void {
     const ast = try parse.parse();
     defer ast.deinit();
 
-    var interp = try interpreter.Interpreter.init(allocator);
+    var interp = try runtime.Interpret.init(allocator);
     defer interp.deinit();
 
     try interp.interpret(ast);

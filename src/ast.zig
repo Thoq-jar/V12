@@ -3,9 +3,11 @@ const token = @import("token.zig");
 
 pub const NodeType = enum {
     Program,
+    WhileStatement,
     ForStatement,
     VarDeclaration,
     BinaryExpression,
+    AssignmentExpression,
     CallExpression,
     MemberExpression,
     UpdateExpression,

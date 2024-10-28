@@ -8,12 +8,14 @@ pub const Lexer = struct {
     current: usize = 0,
     line: usize = 1,
     allocator: std.mem.Allocator,
+    verbose: bool,
 
-    pub fn init(allocator: std.mem.Allocator, source: []const u8) Lexer {
+    pub fn init(allocator: std.mem.Allocator, source: []const u8, verbose: bool) Lexer {
         return .{
             .source = source,
             .tokens = std.ArrayList(token.Token).init(allocator),
             .allocator = allocator,
+            .verbose = verbose,
         };
     }
 
@@ -41,6 +43,7 @@ pub const Lexer = struct {
         switch (c) {
             '/' => {
                 if (self.peek() == '/') {
+                    // Comment goes until the end of the line
                     while (self.peek() != '\n' and !self.isAtEnd()) {
                         _ = self.advance();
                     }
@@ -64,6 +67,7 @@ pub const Lexer = struct {
                     try self.addToken(.Plus);
                 }
             },
+            '-' => try self.addToken(.Minus),
             '=' => try self.addToken(.Equal),
             ' ', '\r', '\t' => {}, // Ignore whitespace
             '\n' => self.line += 1,
@@ -73,7 +77,7 @@ pub const Lexer = struct {
                     try self.number();
                 } else if (isAlpha(c)) {
                     try self.identifier();
-                } else {
+                } else if (self.verbose) {
                     std.debug.print("Unexpected character at line {}: {c}\n", .{ self.line, c });
                 }
             },
@@ -123,7 +127,21 @@ pub const Lexer = struct {
         while (isDigit(self.peek())) {
             _ = self.advance();
         }
+
+        if (self.peek() == '.' and isDigit(self.peekNext())) {
+            _ = self.advance();
+
+            while (isDigit(self.peek())) {
+                _ = self.advance();
+            }
+        }
+
         try self.addToken(.Number);
+    }
+
+    fn peekNext(self: Lexer) u8 {
+        if (self.current + 1 >= self.source.len) return 0;
+        return self.source[self.current + 1];
     }
 
     fn identifier(self: *Lexer) !void {
