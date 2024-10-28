@@ -5,3 +5,4 @@ echo "Installing v12 to /usr/local/bin/v12..."
 echo "Prompting for sudo password..."
 sudo cp ./zig-out/bin/v12 /usr/local/bin/v12
 v12 --version
+cd $HOME/

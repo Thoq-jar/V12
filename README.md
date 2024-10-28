@@ -18,7 +18,6 @@ cd .v12-engine
 git clone https://github.com/Thoq-jar/v12 .
 chmod +x utility/*
 ./utility/install
-cd $HOME/
 rm -rf .v12-engine
 ```
 
